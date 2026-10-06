@@ -1,1240 +1,735 @@
-//littlbit done
-from tkinter import *
-from tkinter import messagebox, filedialog
-from datetime import datetime
-import random
+"""
+Car Garage Billing System 
+
+Features
+- Data-driven price lists (edit SERVICES / PARTS / settings below)
+- Live totals: the bill updates as you type, no need to press TOTAL
+- Input validation (digits-only quantities, numeric money fields, 10-digit phone)
+- GST calculated AFTER discount (the correct way)
+- Sequential bill numbers stored in a SQLite database
+- Bill history window: search by bill no / name / phone / vehicle, view, print, delete
+- Payment status (PAID / PARTIAL / UNPAID) and today's sales on the status bar
+- Resizable window, keyboard shortcuts, safe printing via temp file
+"""
+
 import os
+import re
 import sys
+import sqlite3
+import tempfile
 import subprocess
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+
+# ====================== SETTINGS ======================
+
+APP_TITLE = "Car Garage Billing System"
+GARAGE_NAME = "CAR GARAGE"
+GARAGE_TAGLINE = "SERVICE CENTER"
+GST_RATE = 18            # percent
+DB_FILE = "garage_billing.db"
+BILL_DIR = "garage_bills"
+BILL_WIDTH = 42          # characters per line on the printed bill
+
+SERVICES = {
+    "General Service": 800,
+    "Oil Change": 500,
+    "Car Washing": 300,
+    "Engine Service": 2500,
+    "Brake Service": 1200,
+    "Tyre Service": 700,
+    "Battery Service": 500,
+}
+
+PARTS = {
+    "Engine Oil": 650,
+    "Oil Filter": 250,
+    "Air Filter": 350,
+    "Brake Pad": 1800,
+    "Spark Plug": 400,
+    "Coolant": 500,
+    "Battery": 4500,
+}
+
+# Colours
+BG = "#17202A"
+PRIMARY = "#2874A6"
+LIGHT = "#D6EAF8"
+DARK = "#154360"
+GOLD = "#F4D03F"
 
 
-class Garage_Billing_System:
+class GarageBillingSystem:
 
     def __init__(self, root):
-
         self.root = root
-        self.root.geometry("1350x760+0+0")
-        self.root.configure(bg="#17202A")
-        self.root.title("Car Garage Billing System")
-        self.root.resizable(False, False)
+        self.root.title(APP_TITLE)
+        self.root.geometry("1280x790")
+        self.root.minsize(1150, 720)
+        self.root.configure(bg=BG)
 
-        # ================= VARIABLES =================
+        self._after_id = None
+        self.current = None          # last calculated bill (dict)
+        self.bill_dt = datetime.now()
 
-        self.customer_name = StringVar()
-        self.phone = StringVar()
-        self.vehicle_no = StringVar()
-        self.car_model = StringVar()
-        self.bill_no = StringVar()
-        self.service_date = StringVar()
+        self.init_db()
+        self.init_variables()
+        self.setup_style()
+        self.build_ui()
+        self.bind_events()
 
-        self.generate_bill_number()
+        self.new_bill(ask=False)
+        self.tick()
 
-        # Services
-        self.general_service = IntVar()
-        self.oil_change = IntVar()
-        self.car_wash = IntVar()
-        self.engine_service = IntVar()
-        self.brake_service = IntVar()
-        self.tyre_service = IntVar()
-        self.battery_service = IntVar()
+    # ====================== DATABASE ======================
 
-        # Parts
-        self.engine_oil = IntVar()
-        self.oil_filter = IntVar()
-        self.air_filter = IntVar()
-        self.brake_pad = IntVar()
-        self.spark_plug = IntVar()
-        self.coolant = IntVar()
-        self.battery = IntVar()
-
-        # Billing
-        self.service_total = StringVar(value="0 Rs")
-        self.parts_total = StringVar(value="0 Rs")
-        self.labour_charge = StringVar(value="0 Rs")
-        self.gst = StringVar(value="0 Rs")
-        self.discount = StringVar(value="0")
-        self.grand_total = StringVar(value="0 Rs")
-
-        self.payment_method = StringVar(value="Cash")
-        self.amount_paid = StringVar(value="0")
-        self.balance = StringVar(value="0 Rs")
-
-        # ================= TITLE =================
-
-        Label(
-            self.root,
-            text="CAR GARAGE BILLING SYSTEM",
-            font=("Arial Black", 22),
-            bg="#2874A6",
-            fg="white",
-            bd=10,
-            relief=RIDGE
-        ).pack(fill=X)
-
-        # ================= CUSTOMER DETAILS =================
-
-        details = LabelFrame(
-            self.root,
-            text="Customer & Vehicle Details",
-            font=("Arial Black", 12),
-            bg="#2874A6",
-            fg="white",
-            bd=8,
-            relief=GROOVE
+    def init_db(self):
+        self.db = sqlite3.connect(DB_FILE)
+        self.db.execute(
+            """CREATE TABLE IF NOT EXISTS bills (
+                bill_no   INTEGER PRIMARY KEY,
+                date      TEXT NOT NULL,
+                customer  TEXT,
+                phone     TEXT,
+                vehicle   TEXT,
+                model     TEXT,
+                subtotal  REAL,
+                labour    REAL,
+                discount  REAL,
+                gst       REAL,
+                total     REAL,
+                method    TEXT,
+                paid      REAL,
+                status    TEXT,
+                bill_text TEXT
+            )"""
         )
+        self.db.commit()
 
-        details.place(
-            x=0,
-            y=75,
-            relwidth=1,
-            height=100
-        )
+    def next_bill_no(self):
+        row = self.db.execute("SELECT MAX(bill_no) FROM bills").fetchone()[0]
+        return str((row or 10000) + 1)
 
-        Label(
-            details,
-            text="Customer Name",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=0, padx=8, pady=5)
+    # ====================== VARIABLES ======================
 
-        Entry(
-            details,
-            width=20,
-            textvariable=self.customer_name
-        ).grid(row=0, column=1)
+    def init_variables(self):
+        self.customer_name = tk.StringVar()
+        self.phone = tk.StringVar()
+        self.vehicle_no = tk.StringVar()
+        self.car_model = tk.StringVar()
+        self.bill_no = tk.StringVar()
+        self.clock = tk.StringVar()
 
-        Label(
-            details,
-            text="Phone",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=2, padx=8)
+        self.service_qty = {n: tk.StringVar(value="0") for n in SERVICES}
+        self.part_qty = {n: tk.StringVar(value="0") for n in PARTS}
+        self.service_amt = {n: tk.StringVar(value="0.00") for n in SERVICES}
+        self.part_amt = {n: tk.StringVar(value="0.00") for n in PARTS}
 
-        Entry(
-            details,
-            width=18,
-            textvariable=self.phone
-        ).grid(row=0, column=3)
+        self.labour = tk.StringVar(value="0")
+        self.discount = tk.StringVar(value="0")
+        self.payment_method = tk.StringVar(value="Cash")
+        self.amount_paid = tk.StringVar(value="0")
 
-        Label(
-            details,
-            text="Vehicle No.",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=4, padx=8)
+        # Outputs
+        self.service_total = tk.StringVar(value="0.00")
+        self.parts_total = tk.StringVar(value="0.00")
+        self.discount_amt = tk.StringVar(value="0.00")
+        self.gst_amt = tk.StringVar(value="0.00")
+        self.grand_total = tk.StringVar(value="Rs 0.00")
+        self.balance = tk.StringVar(value="-")
+        self.status = tk.StringVar(value="-")
+        self.today_info = tk.StringVar(value="")
 
-        Entry(
-            details,
-            width=18,
-            textvariable=self.vehicle_no
-        ).grid(row=0, column=5)
-
-        Label(
-            details,
-            text="Car Model",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=6, padx=8)
-
-        Entry(
-            details,
-            width=18,
-            textvariable=self.car_model
-        ).grid(row=0, column=7)
-
-        Label(
-            details,
-            text="Bill No.",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=1, column=0, padx=8)
-
-        Entry(
-            details,
-            width=20,
-            textvariable=self.bill_no,
-            state="readonly"
-        ).grid(row=1, column=1)
-
-        Label(
-            details,
-            text="Date",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=1, column=2, padx=8)
-
-        Label(
-            details,
-            text=datetime.now().strftime("%d-%m-%Y %I:%M %p"),
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=1, column=3)
-
-        # ================= SERVICES =================
-
-        services = LabelFrame(
-            self.root,
-            text="Garage Services",
-            font=("Arial Black", 12),
-            bg="#D6EAF8",
-            fg="#154360",
-            bd=8,
-            relief=GROOVE
-        )
-
-        services.place(
-            x=5,
-            y=185,
-            width=330,
-            height=370
-        )
-
-        service_items = [
-
-            ("General Service", self.general_service),
-            ("Oil Change", self.oil_change),
-            ("Car Washing", self.car_wash),
-            ("Engine Service", self.engine_service),
-            ("Brake Service", self.brake_service),
-            ("Tyre Service", self.tyre_service),
-            ("Battery Service", self.battery_service)
+        # Any input change -> debounced recalculation
+        watched = [
+            self.customer_name, self.phone, self.vehicle_no, self.car_model,
+            self.labour, self.discount, self.payment_method, self.amount_paid,
+            *self.service_qty.values(), *self.part_qty.values(),
         ]
-
-        for row, (name, variable) in enumerate(service_items):
-
-            Label(
-                services,
-                text=name,
-                font=("Arial Black", 10),
-                bg="#D6EAF8",
-                fg="#154360"
-            ).grid(
-                row=row,
-                column=0,
-                padx=5,
-                pady=10
-            )
-
-            Entry(
-                services,
-                width=10,
-                textvariable=variable
-            ).grid(
-                row=row,
-                column=1,
-                padx=10
-            )
-
-        # ================= PARTS =================
-
-        parts = LabelFrame(
-            self.root,
-            text="Parts / Materials",
-            font=("Arial Black", 12),
-            bg="#D6EAF8",
-            fg="#154360",
-            bd=8,
-            relief=GROOVE
-        )
-
-        parts.place(
-            x=345,
-            y=185,
-            width=330,
-            height=370
-        )
-
-        parts_items = [
-
-            ("Engine Oil", self.engine_oil),
-            ("Oil Filter", self.oil_filter),
-            ("Air Filter", self.air_filter),
-            ("Brake Pad", self.brake_pad),
-            ("Spark Plug", self.spark_plug),
-            ("Coolant", self.coolant),
-            ("Battery", self.battery)
-        ]
-
-        for row, (name, variable) in enumerate(parts_items):
-
-            Label(
-                parts,
-                text=name,
-                font=("Arial Black", 10),
-                bg="#D6EAF8",
-                fg="#154360"
-            ).grid(
-                row=row,
-                column=0,
-                padx=5,
-                pady=10
-            )
-
-            Entry(
-                parts,
-                width=10,
-                textvariable=variable
-            ).grid(
-                row=row,
-                column=1,
-                padx=10
-            )
-
-        # ================= BILL AREA =================
-
-        bill_frame = Frame(
-            self.root,
-            bd=8,
-            relief=GROOVE,
-            bg="white"
-        )
-
-        bill_frame.place(
-            x=1010,
-            y=185,
-            width=330,
-            height=370
-        )
-
-        Label(
-            bill_frame,
-            text="SERVICE BILL",
-            font=("Arial Black", 16),
-            bg="#D6EAF8",
-            fg="#154360",
-            bd=5,
-            relief=GROOVE
-        ).pack(fill=X)
-
-        scrollbar = Scrollbar(
-            bill_frame,
-            orient=VERTICAL
-        )
-
-        scrollbar.pack(
-            side=RIGHT,
-            fill=Y
-        )
-
-        self.bill_area = Text(
-            bill_frame,
-            font=("Consolas", 9),
-            yscrollcommand=scrollbar.set
-        )
-
-        self.bill_area.pack(
-            fill=BOTH,
-            expand=True
-        )
-
-        scrollbar.config(
-            command=self.bill_area.yview
-        )
-
-        # ================= BILLING SUMMARY =================
-
-        summary = LabelFrame(
-            self.root,
-            text="Billing Summary",
-            font=("Arial Black", 12),
-            bg="#2874A6",
-            fg="white",
-            bd=8,
-            relief=GROOVE
-        )
-
-        summary.place(
-            x=0,
-            y=565,
-            relwidth=1,
-            height=185
-        )
-
-        # Column 1
-
-        Label(
-            summary,
-            text="Service Total",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=0, padx=8, pady=5)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.service_total,
-            state="readonly"
-        ).grid(row=0, column=1)
-
-        Label(
-            summary,
-            text="Parts Total",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=1, column=0, padx=8)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.parts_total,
-            state="readonly"
-        ).grid(row=1, column=1)
-
-        Label(
-            summary,
-            text="Labour Charge",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=2, column=0, padx=8)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.labour_charge
-        ).grid(row=2, column=1)
-
-        # Column 2
-
-        Label(
-            summary,
-            text="GST %",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=2, padx=8)
-
-        Label(
-            summary,
-            text="18%",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=3)
-
-        Label(
-            summary,
-            text="GST Amount",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=1, column=2)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.gst,
-            state="readonly"
-        ).grid(row=1, column=3)
-
-        Label(
-            summary,
-            text="Discount %",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=2, column=2)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.discount
-        ).grid(row=2, column=3)
-
-        # Column 3
-
-        Label(
-            summary,
-            text="Grand Total",
-            font=("Arial Black", 11),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=0, column=4, padx=10)
-
-        Entry(
-            summary,
-            width=18,
-            font=("Arial Black", 11),
-            textvariable=self.grand_total,
-            state="readonly"
-        ).grid(row=0, column=5)
-
-        Label(
-            summary,
-            text="Payment",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=1, column=4)
-
-        OptionMenu(
-            summary,
-            self.payment_method,
-            "Cash",
-            "UPI",
-            "Card"
-        ).grid(row=1, column=5)
-
-        Label(
-            summary,
-            text="Amount Paid",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=2, column=4)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.amount_paid
-        ).grid(row=2, column=5)
-
-        Label(
-            summary,
-            text="Balance / Change",
-            font=("Arial Black", 10),
-            bg="#2874A6",
-            fg="white"
-        ).grid(row=3, column=4)
-
-        Entry(
-            summary,
-            width=18,
-            textvariable=self.balance,
-            state="readonly"
-        ).grid(row=3, column=5)
-
-        # ================= BUTTONS =================
-
-        button_frame = Frame(
-            summary,
-            bg="#154360",
-            bd=5,
-            relief=GROOVE
-        )
-
-        button_frame.place(
-            x=760,
-            y=75,
-            width=555,
-            height=90
-        )
-
-        Button(
-            button_frame,
-            text="TOTAL",
-            font=("Arial Black", 10),
-            width=10,
-            bg="#D6EAF8",
-            fg="#154360",
-            command=self.calculate_total
-        ).grid(row=0, column=0, padx=5, pady=8)
-
-        Button(
-            button_frame,
-            text="SAVE",
-            font=("Arial Black", 10),
-            width=10,
-            bg="#D6EAF8",
-            fg="#154360",
-            command=self.save_bill
-        ).grid(row=0, column=1, padx=5)
-
-        Button(
-            button_frame,
-            text="PRINT",
-            font=("Arial Black", 10),
-            width=10,
-            bg="#D6EAF8",
-            fg="#154360",
-            command=self.print_bill
-        ).grid(row=0, column=2, padx=5)
-
-        Button(
-            button_frame,
-            text="SEARCH",
-            font=("Arial Black", 10),
-            width=10,
-            bg="#D6EAF8",
-            fg="#154360",
-            command=self.search_bill
-        ).grid(row=0, column=3, padx=5)
-
-        Button(
-            button_frame,
-            text="CLEAR",
-            font=("Arial Black", 10),
-            width=10,
-            bg="#D6EAF8",
-            fg="#154360",
-            command=self.clear
-        ).grid(row=0, column=4, padx=5)
-
-        self.show_intro()
-
-        self.root.bind(
-            "<Control-s>",
-            lambda event: self.save_bill()
-        )
-
-        self.root.bind(
-            "<Control-p>",
-            lambda event: self.print_bill()
-        )
-
-        self.root.protocol(
-            "WM_DELETE_WINDOW",
-            self.exit_app
-        )
-
-    # ================= BILL NUMBER =================
-
-    def generate_bill_number(self):
-
-        self.bill_no.set(
-            str(random.randint(10000, 99999))
-        )
-
-    # ================= INTRO =================
-
-    def show_intro(self):
-
-        self.bill_area.delete(
-            1.0,
-            END
-        )
-
-        self.bill_area.insert(
-            END,
-            "\tCAR GARAGE\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "\tSERVICE CENTER\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "================================\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "Bill No : "
-            + self.bill_no.get()
-            + "\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "Date    : "
-            + datetime.now().strftime(
-                "%d-%m-%Y %I:%M %p"
-            )
-            + "\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "================================\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "Service\t\tQty\tAmount\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "--------------------------------\n"
-        )
-
-    # ================= TOTAL =================
-
-    def calculate_total(self):
-
+        for var in watched:
+            var.trace_add("write", self.schedule_update)
+
+        # Validators
+        reg = self.root.register
+        self.vcmd_int = (reg(lambda s: s == "" or (s.isdigit() and len(s) <= 2)), "%P")
+        self.vcmd_money = (reg(lambda s: re.fullmatch(r"\d{0,7}(\.\d{0,2})?", s) is not None), "%P")
+        self.vcmd_phone = (reg(lambda s: s == "" or (s.isdigit() and len(s) <= 10)), "%P")
+
+    # ====================== STYLE ======================
+
+    def setup_style(self):
+        style = ttk.Style()
         try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("Treeview", rowheight=24, font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
 
-            # Service Prices
+    # ====================== UI HELPERS ======================
 
-            service_prices = {
+    def lbl(self, parent, text, bg=PRIMARY, fg="white", font=("Segoe UI", 10, "bold"), **kw):
+        return tk.Label(parent, text=text, bg=bg, fg=fg, font=font, **kw)
 
-                "General Service":
-                    self.general_service.get() * 800,
+    def ro_entry(self, parent, var, width=18):
+        return ttk.Entry(parent, textvariable=var, width=width,
+                         state="readonly", justify="right")
 
-                "Oil Change":
-                    self.oil_change.get() * 500,
+    def money_entry(self, parent, var, width=18):
+        return ttk.Entry(parent, textvariable=var, width=width, justify="right",
+                         validate="key", validatecommand=self.vcmd_money)
 
-                "Car Washing":
-                    self.car_wash.get() * 300,
+    def action_button(self, parent, text, command, col):
+        tk.Button(
+            parent, text=text, command=command, width=12,
+            font=("Segoe UI", 10, "bold"), bg=LIGHT, fg=DARK,
+            activebackground="white", relief=tk.RAISED, bd=3, cursor="hand2",
+        ).grid(row=0, column=col, padx=6, pady=6)
 
-                "Engine Service":
-                    self.engine_service.get() * 2500,
+    # ====================== UI ======================
 
-                "Brake Service":
-                    self.brake_service.get() * 1200,
+    def build_ui(self):
+        r = self.root
+        r.grid_columnconfigure(0, weight=1)
+        r.grid_rowconfigure(2, weight=1)
 
-                "Tyre Service":
-                    self.tyre_service.get() * 700,
+        # ---- Title
+        tk.Label(r, text="CAR GARAGE BILLING SYSTEM", font=("Segoe UI Black", 20),
+                 bg=PRIMARY, fg="white", bd=6, relief=tk.RIDGE
+                 ).grid(row=0, column=0, sticky="ew")
 
-                "Battery Service":
-                    self.battery_service.get() * 500
-            }
+        # ---- Customer details
+        details = tk.LabelFrame(r, text="Customer & Vehicle Details", bg=PRIMARY, fg="white",
+                                font=("Segoe UI", 11, "bold"), bd=5, relief=tk.GROOVE)
+        details.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 0))
 
-            service_total = sum(
-                service_prices.values()
-            )
+        fields = [
+            (0, 0, "Customer Name *", self.customer_name, 20, None),
+            (0, 2, "Phone", self.phone, 16, self.vcmd_phone),
+            (0, 4, "Vehicle No. *", self.vehicle_no, 16, None),
+            (0, 6, "Car Model", self.car_model, 16, None),
+        ]
+        for row, col, text, var, width, vcmd in fields:
+            self.lbl(details, text).grid(row=row, column=col, padx=8, pady=6, sticky="e")
+            kw = {"validate": "key", "validatecommand": vcmd} if vcmd else {}
+            ttk.Entry(details, width=width, textvariable=var, **kw
+                      ).grid(row=row, column=col + 1, padx=(0, 8))
 
-            # Parts Prices
+        self.lbl(details, "Bill No.").grid(row=1, column=0, padx=8, pady=4, sticky="e")
+        ttk.Entry(details, width=20, textvariable=self.bill_no, state="readonly"
+                  ).grid(row=1, column=1, sticky="w")
 
-            parts_prices = {
+        # ---- Main area
+        main = tk.Frame(r, bg=BG)
+        main.grid(row=2, column=0, sticky="nsew", padx=4, pady=4)
+        main.grid_rowconfigure(0, weight=1)
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_columnconfigure(1, weight=1)
 
-                "Engine Oil":
-                    self.engine_oil.get() * 650,
+        self.build_item_panel(main, 0, "Garage Services", SERVICES,
+                              self.service_qty, self.service_amt)
+        self.build_item_panel(main, 1, "Parts / Materials", PARTS,
+                              self.part_qty, self.part_amt)
+        self.build_bill_panel(main, 2)
 
-                "Oil Filter":
-                    self.oil_filter.get() * 250,
+        # ---- Summary
+        self.build_summary(r, 3)
 
-                "Air Filter":
-                    self.air_filter.get() * 350,
+        # ---- Status bar
+        bar = tk.Frame(r, bg=DARK)
+        bar.grid(row=4, column=0, sticky="ew")
+        tk.Label(bar, textvariable=self.today_info, bg=DARK, fg="white",
+                 font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=10, pady=3)
+        tk.Label(bar, textvariable=self.clock, bg=DARK, fg="white",
+                 font=("Segoe UI", 10)).pack(side=tk.RIGHT, padx=10)
+        tk.Label(bar, text="Ctrl+S Save  |  Ctrl+P Print  |  Ctrl+N New  |  Ctrl+H History",
+                 bg=DARK, fg=LIGHT, font=("Segoe UI", 9)).pack(side=tk.RIGHT, padx=20)
 
-                "Brake Pad":
-                    self.brake_pad.get() * 1800,
+    def build_item_panel(self, parent, col, title, catalog, qty_vars, amt_vars):
+        frame = tk.LabelFrame(parent, text=title, bg=LIGHT, fg=DARK,
+                              font=("Segoe UI", 11, "bold"), bd=5, relief=tk.GROOVE)
+        frame.grid(row=0, column=col, sticky="nsew", padx=4)
+        frame.grid_columnconfigure(0, weight=1)
 
-                "Spark Plug":
-                    self.spark_plug.get() * 400,
+        for c, head in enumerate(("Item", "Rate (Rs)", "Qty", "Amount (Rs)")):
+            self.lbl(frame, head, bg=DARK, fg="white").grid(
+                row=0, column=c, sticky="ew", padx=1, pady=(2, 6))
 
-                "Coolant":
-                    self.coolant.get() * 500,
+        for i, (name, rate) in enumerate(catalog.items(), start=1):
+            self.lbl(frame, name, bg=LIGHT, fg=DARK, anchor="w").grid(
+                row=i, column=0, sticky="w", padx=8, pady=7)
+            self.lbl(frame, f"{rate:,}", bg=LIGHT, fg=DARK,
+                     font=("Segoe UI", 10)).grid(row=i, column=1, padx=8)
+            ttk.Spinbox(frame, from_=0, to=99, width=5, textvariable=qty_vars[name],
+                        validate="key", validatecommand=self.vcmd_int, justify="center"
+                        ).grid(row=i, column=2, padx=8)
+            self.lbl(frame, "", bg=LIGHT, fg=DARK, font=("Consolas", 10, "bold"),
+                     textvariable=amt_vars[name], width=11, anchor="e"
+                     ).grid(row=i, column=3, padx=8)
 
-                "Battery":
-                    self.battery.get() * 4500
-            }
+    def build_bill_panel(self, parent, col):
+        frame = tk.Frame(parent, bd=5, relief=tk.GROOVE, bg="white")
+        frame.grid(row=0, column=col, sticky="ns", padx=4)
 
-            parts_total = sum(
-                parts_prices.values()
-            )
+        tk.Label(frame, text="SERVICE BILL", font=("Segoe UI Black", 14),
+                 bg=LIGHT, fg=DARK, bd=3, relief=tk.GROOVE).pack(fill=tk.X)
 
-            # Labour
+        scroll = ttk.Scrollbar(frame, orient=tk.VERTICAL)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-            labour = float(
-                self.labour_charge.get() or 0
-            )
+        self.bill_area = tk.Text(frame, font=("Consolas", 10), width=BILL_WIDTH + 2,
+                                 yscrollcommand=scroll.set, state="disabled", wrap="none")
+        self.bill_area.pack(fill=tk.BOTH, expand=True)
+        scroll.config(command=self.bill_area.yview)
 
-            # GST
+    def build_summary(self, parent, row):
+        s = tk.LabelFrame(parent, text="Billing Summary", bg=PRIMARY, fg="white",
+                          font=("Segoe UI", 11, "bold"), bd=5, relief=tk.GROOVE)
+        s.grid(row=row, column=0, sticky="ew", padx=4, pady=(0, 4))
 
-            taxable_amount = (
-                service_total +
-                parts_total +
-                labour
-            )
+        # Column group 1
+        self.lbl(s, "Service Total (Rs)").grid(row=0, column=0, padx=8, pady=4, sticky="e")
+        self.ro_entry(s, self.service_total).grid(row=0, column=1)
+        self.lbl(s, "Parts Total (Rs)").grid(row=1, column=0, padx=8, pady=4, sticky="e")
+        self.ro_entry(s, self.parts_total).grid(row=1, column=1)
+        self.lbl(s, "Labour Charge (Rs)").grid(row=2, column=0, padx=8, pady=4, sticky="e")
+        self.money_entry(s, self.labour).grid(row=2, column=1)
 
-            gst_amount = round(
-                taxable_amount * 0.18,
-                2
-            )
+        # Column group 2
+        self.lbl(s, "Discount %").grid(row=0, column=2, padx=8, sticky="e")
+        self.money_entry(s, self.discount).grid(row=0, column=3)
+        self.lbl(s, "Discount Amount (Rs)").grid(row=1, column=2, padx=8, sticky="e")
+        self.ro_entry(s, self.discount_amt).grid(row=1, column=3)
+        self.lbl(s, f"GST {GST_RATE}% (Rs)").grid(row=2, column=2, padx=8, sticky="e")
+        self.ro_entry(s, self.gst_amt).grid(row=2, column=3)
 
-            # Discount
+        # Column group 3
+        self.lbl(s, "GRAND TOTAL", font=("Segoe UI", 11, "bold")).grid(
+            row=0, column=4, padx=8, sticky="e")
+        tk.Label(s, textvariable=self.grand_total, bg=DARK, fg=GOLD, width=16,
+                 font=("Consolas", 15, "bold"), bd=3, relief=tk.SUNKEN
+                 ).grid(row=0, column=5, padx=4, pady=4)
 
-            discount_percent = float(
-                self.discount.get() or 0
-            )
+        self.lbl(s, "Payment").grid(row=1, column=4, padx=8, sticky="e")
+        ttk.Combobox(s, textvariable=self.payment_method, state="readonly", width=16,
+                     values=("Cash", "UPI", "Card")).grid(row=1, column=5)
+        self.lbl(s, "Amount Paid (Rs)").grid(row=2, column=4, padx=8, sticky="e")
+        self.money_entry(s, self.amount_paid, width=19).grid(row=2, column=5)
 
-            if discount_percent < 0 or discount_percent > 100:
+        self.lbl(s, "Balance").grid(row=0, column=6, padx=8, sticky="e")
+        self.ro_entry(s, self.balance, width=20).grid(row=0, column=7)
+        self.lbl(s, "Status").grid(row=1, column=6, padx=8, sticky="e")
+        self.ro_entry(s, self.status, width=20).grid(row=1, column=7)
 
-                messagebox.showerror(
-                    "Error",
-                    "Discount must be between 0 and 100."
-                )
+        # Buttons
+        bf = tk.Frame(s, bg=DARK, bd=4, relief=tk.GROOVE)
+        bf.grid(row=3, column=0, columnspan=8, pady=6)
+        self.action_button(bf, "TOTAL", self.show_total, 0)
+        self.action_button(bf, "SAVE", self.save_bill, 1)
+        self.action_button(bf, "PRINT", self.print_bill, 2)
+        self.action_button(bf, "HISTORY", self.open_history, 3)
+        self.action_button(bf, "NEW / CLEAR", lambda: self.new_bill(ask=True), 4)
 
+    def bind_events(self):
+        self.root.bind("<Control-s>", lambda e: self.save_bill())
+        self.root.bind("<Control-p>", lambda e: self.print_bill())
+        self.root.bind("<Control-n>", lambda e: self.new_bill(ask=True))
+        self.root.bind("<Control-h>", lambda e: self.open_history())
+        self.root.bind("<F5>", lambda e: self.show_total())
+        self.root.protocol("WM_DELETE_WINDOW", self.exit_app)
+
+    # ====================== CLOCK / STATUS ======================
+
+    def tick(self):
+        self.clock.set(datetime.now().strftime("%d-%m-%Y  %I:%M:%S %p"))
+        self.root.after(1000, self.tick)
+
+    def refresh_today(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        count, total = self.db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(total), 0) FROM bills WHERE date LIKE ?",
+            (today + "%",),
+        ).fetchone()
+        self.today_info.set(f"Today: {count} bill(s)  |  Sales: Rs {total:,.2f}")
+
+    # ====================== CALCULATION ======================
+
+    def schedule_update(self, *_):
+        if self._after_id:
+            self.root.after_cancel(self._after_id)
+        self._after_id = self.root.after(150, self.live_update)
+
+    def live_update(self):
+        self._after_id = None
+        try:
+            self.calculate()
+        except ValueError:
+            pass  # user is mid-typing; stay quiet
+
+    def show_total(self):
+        try:
+            self.calculate()
+        except ValueError as err:
+            messagebox.showerror("Invalid Input", str(err))
+
+    def _collect(self, catalog, qty_vars, amt_vars):
+        lines = []
+        for name, rate in catalog.items():
+            raw = qty_vars[name].get().strip()
+            try:
+                qty = int(raw or 0)
+            except ValueError:
+                raise ValueError(f"Invalid quantity for {name}.")
+            amount = qty * rate
+            amt_vars[name].set(f"{amount:,.2f}")
+            if qty > 0:
+                lines.append({"name": name, "qty": qty, "rate": rate, "amount": amount})
+        return lines
+
+    @staticmethod
+    def _money(var, label):
+        raw = var.get().strip()
+        try:
+            value = float(raw or 0)
+        except ValueError:
+            raise ValueError(f"{label} must be a number.")
+        if value < 0:
+            raise ValueError(f"{label} cannot be negative.")
+        return value
+
+    def calculate(self):
+        services = self._collect(SERVICES, self.service_qty, self.service_amt)
+        parts = self._collect(PARTS, self.part_qty, self.part_amt)
+
+        labour = self._money(self.labour, "Labour charge")
+        disc_pct = self._money(self.discount, "Discount")
+        paid = self._money(self.amount_paid, "Amount paid")
+        if disc_pct > 100:
+            raise ValueError("Discount must be between 0 and 100.")
+
+        service_total = sum(l["amount"] for l in services)
+        parts_total = sum(l["amount"] for l in parts)
+        subtotal = service_total + parts_total + labour
+
+        discount_amt = round(subtotal * disc_pct / 100, 2)
+        taxable = subtotal - discount_amt
+        gst = round(taxable * GST_RATE / 100, 2)       # GST on discounted amount
+        total = round(taxable + gst, 2)
+        balance = round(paid - total, 2)
+
+        if total <= 0:
+            status = "-"
+        elif paid >= total:
+            status = "PAID"
+        elif paid > 0:
+            status = "PARTIAL"
+        else:
+            status = "UNPAID"
+
+        d = {
+            "bill_no": self.bill_no.get(),
+            "datetime": self.bill_dt,
+            "customer": self.customer_name.get().strip(),
+            "phone": self.phone.get().strip(),
+            "vehicle": self.vehicle_no.get().strip().upper(),
+            "model": self.car_model.get().strip(),
+            "services": services, "parts": parts,
+            "service_total": service_total, "parts_total": parts_total,
+            "labour": labour, "subtotal": subtotal,
+            "discount_pct": disc_pct, "discount_amt": discount_amt,
+            "gst": gst, "total": total,
+            "method": self.payment_method.get(), "paid": paid,
+            "balance": balance, "status": status,
+        }
+
+        # Update summary widgets
+        self.service_total.set(f"{service_total:,.2f}")
+        self.parts_total.set(f"{parts_total:,.2f}")
+        self.discount_amt.set(f"{discount_amt:,.2f}")
+        self.gst_amt.set(f"{gst:,.2f}")
+        self.grand_total.set(f"Rs {total:,.2f}")
+        self.status.set(status)
+        if total <= 0:
+            self.balance.set("-")
+        elif balance >= 0:
+            self.balance.set(f"Change: {balance:,.2f}")
+        else:
+            self.balance.set(f"Due: {abs(balance):,.2f}")
+
+        self.current = d
+        self.render_preview(self.build_bill_text(d))
+        return d
+
+    # ====================== BILL TEXT ======================
+
+    def build_bill_text(self, d):
+        w = BILL_WIDTH
+        sep, thin = "=" * w, "-" * w
+
+        def kv(label, value):
+            return f"{label:<20}{value:>{w - 20}}"
+
+        L = [
+            GARAGE_NAME.center(w),
+            GARAGE_TAGLINE.center(w),
+            sep,
+            f"Bill No : {d['bill_no']}",
+            f"Date    : {d['datetime']:%d-%m-%Y %I:%M %p}",
+            sep,
+            f"Customer: {d['customer']}",
+            f"Phone   : {d['phone']}",
+            f"Vehicle : {d['vehicle']}",
+            f"Model   : {d['model']}",
+            sep,
+            f"{'Item':<18}{'Qty':>4}{'Rate':>9}{'Amount':>11}",
+            thin,
+        ]
+
+        if not d["services"] and not d["parts"]:
+            L.append("No items added yet".center(w))
+
+        for title, lines in (("SERVICES", d["services"]), ("PARTS", d["parts"])):
+            if lines:
+                L.append(title)
+                for l in lines:
+                    L.append(f"{l['name'][:18]:<18}{l['qty']:>4}{l['rate']:>9,.0f}{l['amount']:>11,.2f}")
+
+        L += [
+            thin,
+            kv("Services", f"{d['service_total']:,.2f}"),
+            kv("Parts", f"{d['parts_total']:,.2f}"),
+            kv("Labour", f"{d['labour']:,.2f}"),
+            kv("Sub Total", f"{d['subtotal']:,.2f}"),
+            kv(f"Discount ({d['discount_pct']:g}%)", f"- {d['discount_amt']:,.2f}"),
+            kv(f"GST ({GST_RATE}%)", f"{d['gst']:,.2f}"),
+            sep,
+            kv("GRAND TOTAL (Rs)", f"{d['total']:,.2f}"),
+            sep,
+            kv("Payment", d["method"]),
+            kv("Paid", f"{d['paid']:,.2f}"),
+        ]
+        if d["total"] > 0:
+            if d["balance"] >= 0:
+                L.append(kv("Change", f"{d['balance']:,.2f}"))
+            else:
+                L.append(kv("Balance Due", f"{abs(d['balance']):,.2f}"))
+        L += [kv("Status", d["status"]), sep,
+              "THANK YOU!".center(w), "VISIT AGAIN".center(w)]
+        return "\n".join(L) + "\n"
+
+    def render_preview(self, text):
+        self.bill_area.config(state="normal")
+        self.bill_area.delete("1.0", tk.END)
+        self.bill_area.insert(tk.END, text)
+        self.bill_area.config(state="disabled")
+
+    # ====================== NEW / CLEAR ======================
+
+    def has_data(self):
+        if any(v.get().strip() for v in
+               (self.customer_name, self.phone, self.vehicle_no, self.car_model)):
+            return True
+        qtys = [*self.service_qty.values(), *self.part_qty.values()]
+        return any(v.get().strip() not in ("", "0") for v in qtys)
+
+    def new_bill(self, ask=True):
+        if ask and self.has_data():
+            if not messagebox.askyesno("New Bill", "Clear all information and start a new bill?"):
                 return
 
-            discount_amount = round(
-                taxable_amount *
-                discount_percent /
-                100,
-                2
-            )
-
-            grand_total = round(
-                taxable_amount +
-                gst_amount -
-                discount_amount,
-                2
-            )
-
-            # Set values
-
-            self.service_total.set(
-                f"{service_total:.2f} Rs"
-            )
-
-            self.parts_total.set(
-                f"{parts_total:.2f} Rs"
-            )
-
-            self.gst.set(
-                f"{gst_amount:.2f} Rs"
-            )
-
-            self.grand_total.set(
-                f"{grand_total:.2f} Rs"
-            )
-
-            # Payment
-
-            paid = float(
-                self.amount_paid.get() or 0
-            )
-
-            difference = paid - grand_total
-
-            if difference >= 0:
-
-                self.balance.set(
-                    f"Change: {difference:.2f} Rs"
-                )
-
-            else:
-
-                self.balance.set(
-                    f"Due: {abs(difference):.2f} Rs"
-                )
-
-            self.create_bill(
-                service_prices,
-                parts_prices,
-                labour,
-                gst_amount,
-                discount_amount,
-                grand_total
-            )
-
-        except ValueError:
-
-            messagebox.showerror(
-                "Invalid Input",
-                "Please enter valid numeric values."
-            )
-
-    # ================= CREATE BILL =================
-
-    def create_bill(
-        self,
-        services,
-        parts,
-        labour,
-        gst,
-        discount,
-        total
-    ):
-
-        self.show_intro()
-
-        self.bill_area.insert(
-            END,
-            f"Customer : {self.customer_name.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Phone    : {self.phone.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Vehicle  : {self.vehicle_no.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Model    : {self.car_model.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "================================\n"
-        )
-
-        # Services
-
-        for name, amount in services.items():
-
-            if amount > 0:
-
-                quantity = 0
-
-                if name == "General Service":
-                    quantity = self.general_service.get()
-
-                elif name == "Oil Change":
-                    quantity = self.oil_change.get()
-
-                elif name == "Car Washing":
-                    quantity = self.car_wash.get()
-
-                elif name == "Engine Service":
-                    quantity = self.engine_service.get()
-
-                elif name == "Brake Service":
-                    quantity = self.brake_service.get()
-
-                elif name == "Tyre Service":
-                    quantity = self.tyre_service.get()
-
-                elif name == "Battery Service":
-                    quantity = self.battery_service.get()
-
-                self.bill_area.insert(
-                    END,
-                    f"{name[:15]:15} {quantity:3} {amount:.2f}\n"
-                )
-
-        # Parts
-
-        self.bill_area.insert(
-            END,
-            "\nPARTS\n"
-        )
-
-        for name, amount in parts.items():
-
-            if amount > 0:
-
-                quantity = 0
-
-                if name == "Engine Oil":
-                    quantity = self.engine_oil.get()
-
-                elif name == "Oil Filter":
-                    quantity = self.oil_filter.get()
-
-                elif name == "Air Filter":
-                    quantity = self.air_filter.get()
-
-                elif name == "Brake Pad":
-                    quantity = self.brake_pad.get()
-
-                elif name == "Spark Plug":
-                    quantity = self.spark_plug.get()
-
-                elif name == "Coolant":
-                    quantity = self.coolant.get()
-
-                elif name == "Battery":
-                    quantity = self.battery.get()
-
-                self.bill_area.insert(
-                    END,
-                    f"{name[:15]:15} {quantity:3} {amount:.2f}\n"
-                )
-
-        self.bill_area.insert(
-            END,
-            "--------------------------------\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Service Total : {self.service_total.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Parts Total   : {self.parts_total.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Labour        : {labour:.2f} Rs\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"GST (18%)     : {gst:.2f} Rs\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Discount      : {discount:.2f} Rs\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "--------------------------------\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"GRAND TOTAL   : {total:.2f} Rs\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Payment       : {self.payment_method.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"Paid          : {self.amount_paid.get()} Rs\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            f"{self.balance.get()}\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "================================\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "\tTHANK YOU!\n"
-        )
-
-        self.bill_area.insert(
-            END,
-            "\tVISIT AGAIN\n"
-        )
-
-    # ================= SAVE =================
+        for v in (self.customer_name, self.phone, self.vehicle_no, self.car_model):
+            v.set("")
+        for v in (*self.service_qty.values(), *self.part_qty.values()):
+            v.set("0")
+        self.labour.set("0")
+        self.discount.set("0")
+        self.amount_paid.set("0")
+        self.payment_method.set("Cash")
+
+        self.bill_dt = datetime.now()
+        self.bill_no.set(self.next_bill_no())
+        if self._after_id:
+            self.root.after_cancel(self._after_id)
+            self._after_id = None
+        self.live_update()
+        self.refresh_today()
+
+    # ====================== SAVE ======================
+
+    def validate_for_save(self, d):
+        if not d["customer"]:
+            messagebox.showerror("Missing Data", "Please enter the customer name.")
+            return False
+        if not d["vehicle"]:
+            messagebox.showerror("Missing Data", "Please enter the vehicle number.")
+            return False
+        if d["phone"] and not re.fullmatch(r"\d{10}", d["phone"]):
+            messagebox.showerror("Invalid Phone", "Phone number must be exactly 10 digits.")
+            return False
+        if d["total"] <= 0:
+            messagebox.showerror("Empty Bill", "Add at least one service, part or labour charge.")
+            return False
+        return True
 
     def save_bill(self):
-
-        if not self.bill_area.get(
-            1.0,
-            END
-        ).strip():
-
-            messagebox.showerror(
-                "Error",
-                "Please generate the bill first."
-            )
-
-            return
-
-        os.makedirs(
-            "garage_bills",
-            exist_ok=True
-        )
-
-        filename = (
-            "garage_bills/Garage_Bill_"
-            + self.bill_no.get()
-            + ".txt"
-        )
-
         try:
-
-            with open(
-                filename,
-                "w",
-                encoding="utf-8"
-            ) as file:
-
-                file.write(
-                    self.bill_area.get(
-                        1.0,
-                        END
-                    )
-                )
-
-            messagebox.showinfo(
-                "Success",
-                f"Bill saved successfully.\n\n{filename}"
-            )
-
-        except Exception as error:
-
-            messagebox.showerror(
-                "Error",
-                str(error)
-            )
-
-    # ================= SEARCH =================
-
-    def search_bill(self):
-
-        bill_number = filedialog.askstring(
-            "Search Bill",
-            "Enter Bill Number:"
-        )
-
-        if not bill_number:
+            d = self.calculate()
+        except ValueError as err:
+            messagebox.showerror("Invalid Input", str(err))
+            return
+        if not self.validate_for_save(d):
             return
 
-        filename = (
-            "garage_bills/Garage_Bill_"
-            + bill_number
-            + ".txt"
-        )
-
-        if os.path.exists(filename):
-
-            with open(
-                filename,
-                "r",
-                encoding="utf-8"
-            ) as file:
-
-                data = file.read()
-
-            self.bill_area.delete(
-                1.0,
-                END
+        text = self.build_bill_text(d)
+        try:
+            self.db.execute(
+                "INSERT OR REPLACE INTO bills VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (int(d["bill_no"]), d["datetime"].strftime("%Y-%m-%d %H:%M:%S"),
+                 d["customer"], d["phone"], d["vehicle"], d["model"],
+                 d["subtotal"], d["labour"], d["discount_amt"], d["gst"], d["total"],
+                 d["method"], d["paid"], d["status"], text),
             )
+            self.db.commit()
 
-            self.bill_area.insert(
-                END,
-                data
-            )
+            os.makedirs(BILL_DIR, exist_ok=True)
+            path = os.path.join(BILL_DIR, f"Garage_Bill_{d['bill_no']}.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+        except (sqlite3.Error, OSError) as err:
+            messagebox.showerror("Save Error", str(err))
+            return
 
-        else:
+        self.refresh_today()
+        if messagebox.askyesno("Saved",
+                               f"Bill {d['bill_no']} saved successfully.\n\nStart a new bill?"):
+            self.new_bill(ask=False)
 
-            messagebox.showerror(
-                "Not Found",
-                "Bill not found."
-            )
-
-    # ================= PRINT =================
+    # ====================== PRINT ======================
 
     def print_bill(self):
-
-        if not self.bill_area.get(
-            1.0,
-            END
-        ).strip():
-
-            messagebox.showerror(
-                "Error",
-                "Generate a bill first."
-            )
-
-            return
-
-        filename = (
-            "Garage_Print_"
-            + self.bill_no.get()
-            + ".txt"
-        )
-
         try:
-
-            with open(
-                filename,
-                "w",
-                encoding="utf-8"
-            ) as file:
-
-                file.write(
-                    self.bill_area.get(
-                        1.0,
-                        END
-                    )
-                )
-
-            if sys.platform == "win32":
-
-                os.startfile(
-                    os.path.abspath(filename),
-                    "print"
-                )
-
-            else:
-
-                subprocess.run(
-                    ["lp", filename]
-                )
-
-        except Exception as error:
-
-            messagebox.showerror(
-                "Print Error",
-                str(error)
-            )
-
-    # ================= CLEAR =================
-
-    def clear(self):
-
-        if not messagebox.askyesno(
-            "Clear",
-            "Clear all information?"
-        ):
+            d = self.calculate()
+        except ValueError as err:
+            messagebox.showerror("Invalid Input", str(err))
             return
+        if d["total"] <= 0:
+            messagebox.showerror("Empty Bill", "Generate a bill first.")
+            return
+        self.print_text(self.build_bill_text(d), d["bill_no"])
 
-        variables = [
+    def print_text(self, text, bill_no):
+        path = os.path.join(tempfile.gettempdir(), f"Garage_Print_{bill_no}.txt")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            if sys.platform == "win32":
+                os.startfile(path, "print")
+            else:
+                subprocess.run(["lp", path], check=True)
+        except (OSError, subprocess.CalledProcessError) as err:
+            messagebox.showerror("Print Error", str(err))
 
-            self.general_service,
-            self.oil_change,
-            self.car_wash,
-            self.engine_service,
-            self.brake_service,
-            self.tyre_service,
-            self.battery_service,
+    # ====================== HISTORY ======================
 
-            self.engine_oil,
-            self.oil_filter,
-            self.air_filter,
-            self.brake_pad,
-            self.spark_plug,
-            self.coolant,
-            self.battery
-        ]
+    def open_history(self):
+        win = tk.Toplevel(self.root)
+        win.title("Bill History")
+        win.geometry("940x500")
+        win.configure(bg=BG)
+        win.transient(self.root)
 
-        for variable in variables:
-            variable.set(0)
+        search = tk.StringVar()
+        top = tk.Frame(win, bg=BG)
+        top.pack(fill=tk.X, padx=8, pady=8)
+        tk.Label(top, text="Search (bill no / name / phone / vehicle):",
+                 bg=BG, fg="white").pack(side=tk.LEFT)
+        entry = ttk.Entry(top, textvariable=search, width=30)
+        entry.pack(side=tk.LEFT, padx=8)
+        entry.focus_set()
 
-        self.customer_name.set("")
-        self.phone.set("")
-        self.vehicle_no.set("")
-        self.car_model.set("")
+        cols = ("bill", "date", "customer", "phone", "vehicle", "total", "status")
+        heads = ("Bill No", "Date", "Customer", "Phone", "Vehicle", "Total (Rs)", "Status")
+        widths = (80, 140, 170, 110, 110, 100, 90)
 
-        self.service_total.set("0 Rs")
-        self.parts_total.set("0 Rs")
-        self.labour_charge.set("0")
-        self.gst.set("0 Rs")
-        self.discount.set("0")
-        self.grand_total.set("0 Rs")
+        tree = ttk.Treeview(win, columns=cols, show="headings", selectmode="browse")
+        for c, h, w in zip(cols, heads, widths):
+            tree.heading(c, text=h)
+            tree.column(c, width=w, anchor="e" if c == "total" else "w")
+        tree.tag_configure("UNPAID", foreground="#C0392B")
+        tree.tag_configure("PARTIAL", foreground="#CA6F1E")
+        sb = ttk.Scrollbar(win, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(fill=tk.BOTH, expand=True, padx=(8, 0))
 
-        self.payment_method.set("Cash")
-        self.amount_paid.set("0")
-        self.balance.set("0 Rs")
+        info = tk.StringVar()
+        tk.Label(win, textvariable=info, bg=BG, fg=GOLD,
+                 font=("Segoe UI", 10, "bold")).pack(side=tk.BOTTOM, pady=6)
 
-        self.generate_bill_number()
+        def refresh(*_):
+            tree.delete(*tree.get_children())
+            q = f"%{search.get().strip()}%"
+            rows = self.db.execute(
+                """SELECT bill_no, date, customer, phone, vehicle, total, status FROM bills
+                   WHERE CAST(bill_no AS TEXT) LIKE ? OR customer LIKE ?
+                      OR phone LIKE ? OR vehicle LIKE ?
+                   ORDER BY bill_no DESC""", (q, q, q, q)).fetchall()
+            for r in rows:
+                tree.insert("", tk.END, iid=str(r[0]), tags=(r[6],),
+                            values=(r[0], r[1], r[2], r[3], r[4], f"{r[5]:,.2f}", r[6]))
+            info.set(f"{len(rows)} bill(s)  |  Total: Rs {sum(r[5] for r in rows):,.2f}")
 
-        self.show_intro()
+        def selected_text():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showinfo("History", "Select a bill first.", parent=win)
+                return None, None
+            row = self.db.execute("SELECT bill_text FROM bills WHERE bill_no=?",
+                                  (int(sel[0]),)).fetchone()
+            return sel[0], row[0] if row else None
 
-    # ================= EXIT =================
+        def view(event=None):
+            bill_no, text = selected_text()
+            if text is None:
+                return
+            v = tk.Toplevel(win)
+            v.title(f"Bill {bill_no}")
+            t = tk.Text(v, font=("Consolas", 10), width=BILL_WIDTH + 2, height=38)
+            t.insert(tk.END, text)
+            t.config(state="disabled")
+            t.pack(padx=8, pady=8)
+            ttk.Button(v, text="Print", command=lambda: self.print_text(text, bill_no)
+                       ).pack(pady=(0, 8))
+
+        def delete():
+            bill_no, text = selected_text()
+            if text is None:
+                return
+            if messagebox.askyesno("Delete", f"Permanently delete bill {bill_no}?", parent=win):
+                self.db.execute("DELETE FROM bills WHERE bill_no=?", (int(bill_no),))
+                self.db.commit()
+                refresh()
+                self.refresh_today()
+
+        ttk.Button(top, text="Search", command=refresh).pack(side=tk.LEFT)
+        ttk.Button(top, text="View / Print", command=view).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(top, text="Delete", command=delete).pack(side=tk.RIGHT)
+
+        entry.bind("<Return>", refresh)
+        search.trace_add("write", refresh)
+        tree.bind("<Double-1>", view)
+        refresh()
+
+    # ====================== EXIT ======================
 
     def exit_app(self):
-
-        if messagebox.askyesno(
-            "Exit",
-            "Are you sure you want to exit?"
-        ):
-
+        if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
+            self.db.close()
             self.root.destroy()
 
 
-# ================= MAIN =================
-
 if __name__ == "__main__":
-
-    root = Tk()
-
-    app = Garage_Billing_System(root)
-
+    root = tk.Tk()
+    GarageBillingSystem(root)
     root.mainloop()
