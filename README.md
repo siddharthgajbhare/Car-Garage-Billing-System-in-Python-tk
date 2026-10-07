@@ -1,427 +1,380 @@
 # 🚗 Car Garage Billing System
 
-A desktop-based **Car Garage Billing System** developed using **Python and Tkinter**.
-The application helps garage/service-center staff manage customer and vehicle details, calculate service and parts charges, generate invoices, save bills, search previous bills, and print invoices.
+A **Python-based desktop billing application** for car garages and service centers. The system provides an easy-to-use GUI for creating bills, calculating GST and discounts, managing payments, storing bill history, and printing invoices.
 
----
+## 📌 Features
 
-## 📖 Overview
-
-The **Car Garage Billing System** is a user-friendly desktop application designed to simplify the billing process for automobile service centers.
-
-Users can enter customer and vehicle information, select required garage services and parts, calculate labour charges, apply discounts, calculate **18% GST**, record payments, and generate a complete service bill.
-
-The application provides a simple graphical interface with separate sections for customer details, services, parts, billing summary, and invoice generation.
-
----
-
-## ✨ Features
-
-* 🚗 Customer & vehicle information management
-* 🧾 Automatic bill number generation
-* 🔧 Garage service selection
-* ⚙️ Vehicle parts/material selection
-* 💰 Automatic service and parts calculation
-* 👨‍🔧 Labour charge management
-* 🧮 Automatic **18% GST calculation**
-* 🎁 Discount calculation
-* 💳 Multiple payment methods
-* 💵 Amount paid and balance/change calculation
-* 📄 Invoice generation
-* 💾 Save bills as text files
-* 🔍 Search previously saved bills
-* 🖨️ Print generated bills
-* 🔄 Clear/reset all information
-* ❌ Safe application exit
-* ⌨️ Keyboard shortcuts for Save and Print
-
----
+- 🧾 Create professional garage bills
+- 🚘 Customer and vehicle details management
+- 🔧 Predefined garage services and spare parts
+- 🔢 Quantity-based automatic billing
+- 💰 Automatic service, parts, labour, and subtotal calculation
+- 🎯 Discount calculation
+- 🧮 GST calculation after discount
+- 💳 Payment methods:
+  - Cash
+  - UPI
+  - Card
+- 💵 Payment status:
+  - PAID
+  - PARTIAL
+  - UNPAID
+- 🔄 Live bill calculation while entering data
+- 📱 10-digit phone number validation
+- 🔢 Quantity and money input validation
+- 🗃️ SQLite database for bill storage
+- 🔢 Automatic sequential bill numbers
+- 🔍 Bill history search
+- 👁️ View previous bills
+- 🖨️ Print bills
+- 🗑️ Delete bills from history
+- 📊 Today's bill count and total sales
+- ⌨️ Keyboard shortcuts
+- 🪟 Resizable GUI
+- 📄 Bills are also saved as `.txt` files
 
 ## 🛠️ Technologies Used
 
-| Technology       | Purpose                         |
-| ---------------- | ------------------------------- |
-| 🐍 Python 3.x    | Core programming language       |
-| 🖼️ Tkinter      | GUI development                 |
-| 💬 MessageBox    | Alerts and confirmation dialogs |
-| 📂 OS Module     | File and directory management   |
-| 🎲 Random Module | Bill number generation          |
-| 🕒 Datetime      | Date and time generation        |
-| 🖨️ Subprocess   | Printing support                |
-| 🧱 OOP           | Application structure           |
-
----
-
-## 📋 Garage Services
-
-The application supports the following services:
-
-* General Service
-* Oil Change
-* Car Washing
-* Engine Service
-* Brake Service
-* Tyre Service
-* Battery Service
-
-### 💰 Service Pricing
-
-| Service         |  Price |
-| --------------- | -----: |
-| General Service |   ₹800 |
-| Oil Change      |   ₹500 |
-| Car Washing     |   ₹300 |
-| Engine Service  | ₹2,500 |
-| Brake Service   | ₹1,200 |
-| Tyre Service    |   ₹700 |
-| Battery Service |   ₹500 |
-
----
-
-## 🔩 Parts & Materials
-
-The system supports the following vehicle parts:
-
-* Engine Oil
-* Oil Filter
-* Air Filter
-* Brake Pad
-* Spark Plug
-* Coolant
-* Battery
-
-### 💰 Parts Pricing
-
-| Part       |  Price |
-| ---------- | -----: |
-| Engine Oil |   ₹650 |
-| Oil Filter |   ₹250 |
-| Air Filter |   ₹350 |
-| Brake Pad  | ₹1,800 |
-| Spark Plug |   ₹400 |
-| Coolant    |   ₹500 |
-| Battery    | ₹4,500 |
-
----
-
-## 🧮 Billing Calculation
-
-The system calculates the final bill using:
-
-```text
-Service Total
-      +
-Parts Total
-      +
-Labour Charge
-      =
-Taxable Amount
-```
-
-### GST
-
-The application applies **18% GST** to the taxable amount.
-
-```text
-GST = Taxable Amount × 18%
-```
-
-### Discount
-
-The user can enter a discount percentage from **0% to 100%**.
-
-```text
-Discount = Taxable Amount × Discount% / 100
-```
-
-### Grand Total
-
-```text
-Grand Total =
-Taxable Amount + GST - Discount
-```
-
-The code validates the discount range and displays an error for invalid values.
-
----
-
-## 💳 Payment Management
-
-The application supports three payment methods:
-
-* 💵 Cash
-* 📱 UPI
-* 💳 Card
-
-Users can enter the amount paid, and the system automatically calculates either the customer's change or remaining amount due.
-
-Example:
-
-```text
-Grand Total : ₹5,000
-Amount Paid : ₹5,500
-
-Change      : ₹500
-```
-
----
-
-## 🧾 Generated Invoice
-
-The generated invoice contains:
-
-* Bill number
-* Date and time
-* Customer name
-* Phone number
-* Vehicle number
-* Car model
-* Selected services
-* Selected parts
-* Service total
-* Parts total
-* Labour charge
-* GST
-* Discount
-* Grand total
-* Payment method
-* Amount paid
-* Balance/change
-
-The invoice is displayed directly inside the application's billing area.
-
----
-
-## 💾 Save Bill
-
-Generated bills can be saved automatically inside the:
-
-```text
-garage_bills/
-```
-
-directory.
-
-The bill is saved using the bill number:
-
-```text
-garage_bills/Garage_Bill_<BillNumber>.txt
-```
-
-For example:
-
-```text
-garage_bills/Garage_Bill_58241.txt
-```
-
----
-
-## 🔍 Search Bill
-
-Previously saved bills can be searched using their **Bill Number**.
-
-The application looks for the corresponding file inside the `garage_bills` directory and displays the saved invoice if it exists.
-
----
-
-## 🖨️ Print Bill
-
-The system provides a **PRINT** option for generated invoices.
-
-* Windows uses the system print command.
-* Linux/Unix systems use the `lp` printing command.
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut   | Action     |
-| ---------- | ---------- |
-| `Ctrl + S` | Save Bill  |
-| `Ctrl + P` | Print Bill |
-
----
+| Technology | Purpose |
+|------------|---------|
+| Python | Application development |
+| Tkinter | Graphical User Interface |
+| SQLite3 | Database management |
+| Regular Expressions | Input validation |
+| OS / Subprocess | File handling and printing |
 
 ## 📂 Project Structure
 
 ```text
 Car-Garage-Billing-System/
 │
-├── billing.py
+├── garage_billing.py
+├── garage_billing.db
 ├── garage_bills/
-│   └── Garage_Bill_XXXXX.txt
-│
-├── screenshots/
-│   ├── home.png
-│   ├── billing.png
-│   └── invoice.png
+│   ├── Garage_Bill_10001.txt
+│   ├── Garage_Bill_10002.txt
+│   └── ...
 │
 └── README.md
 ```
 
-> `garage_bills/` is created automatically when the first bill is saved.
+> `garage_billing.db` and `garage_bills/` are created automatically when the application runs.
 
----
+## ⚙️ Requirements
 
-## 🚀 Installation & Setup
+- Python 3.8 or higher
+- Tkinter
+- SQLite3
 
-### 1. Clone the Repository
+Most Python installations already include **Tkinter** and **SQLite3**.
 
-```bash
-git clone https://github.com/siddharthgajbhare/Car-Garage-Billing-System.git
-```
+## 🚀 Installation
 
-### 2. Navigate to the Project
-
-```bash
-cd Car-Garage-Billing-System
-```
-
-### 3. Run the Application
+### 1. Clone the repository
 
 ```bash
-python billing.py
+git clone https://github.com/your-username/car-garage-billing-system.git
 ```
 
-No external Python packages are required because the application uses Python's built-in modules.
+### 2. Open the project directory
 
----
+```bash
+cd car-garage-billing-system
+```
 
-## 🖥️ Application Interface
+### 3. Run the application
 
-The application contains:
+```bash
+python garage_billing.py
+```
 
-### 👤 Customer & Vehicle Details
+For some systems:
 
-Users can enter:
+```bash
+python3 garage_billing.py
+```
 
-* Customer Name
-* Phone Number
-* Vehicle Number
-* Car Model
+## 🖥️ How to Use
 
-A unique five-digit bill number is automatically generated.
+### 1. Enter Customer Details
 
-### 🔧 Garage Services
+Enter:
 
-Enter the quantity required for each garage service.
+- Customer Name
+- Phone Number
+- Vehicle Number
+- Car Model
 
-### 🔩 Parts / Materials
+### 2. Select Services
 
-Enter the quantity of required vehicle parts.
+Choose the required quantity for services such as:
 
-### 🧾 Service Bill
+- General Service
+- Oil Change
+- Car Washing
+- Engine Service
+- Brake Service
+- Tyre Service
+- Battery Service
 
-The generated invoice is displayed in a scrollable billing area.
+### 3. Select Parts
 
-### 📊 Billing Summary
+Add required parts such as:
 
-The summary displays:
+- Engine Oil
+- Oil Filter
+- Air Filter
+- Brake Pad
+- Spark Plug
+- Coolant
+- Battery
 
-* Service Total
-* Parts Total
-* Labour Charge
-* GST
-* Discount
-* Grand Total
-* Payment
-* Amount Paid
-* Balance/Change
+### 4. Add Billing Details
 
----
+Enter:
 
-## 🔄 Reset / Clear
+- Labour Charge
+- Discount percentage
+- Payment method
+- Amount paid
 
-The **CLEAR** button resets:
+The application automatically calculates:
 
-* Customer details
-* Vehicle details
-* Services
-* Parts
-* Billing values
-* Payment details
-* Bill number
-* Generated invoice
+```text
+Service Total
++ Parts Total
++ Labour
+----------------
+Subtotal
+- Discount
+----------------
+Taxable Amount
++ GST
+----------------
+Grand Total
+```
 
-The application also asks for confirmation before clearing the information.
+### 5. Save the Bill
 
----
+Click **SAVE** or press:
 
-## 🎯 Future Enhancements
+```text
+Ctrl + S
+```
+
+The bill is stored in the SQLite database and also saved as a text file.
+
+### 6. Print the Bill
+
+Click **PRINT** or press:
+
+```text
+Ctrl + P
+```
+
+### 7. View Bill History
+
+Click **HISTORY** or press:
+
+```text
+Ctrl + H
+```
+
+Bills can be searched using:
+
+- Bill Number
+- Customer Name
+- Phone Number
+- Vehicle Number
+
+### 8. Create a New Bill
+
+Click **NEW / CLEAR** or press:
+
+```text
+Ctrl + N
+```
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl + S` | Save Bill |
+| `Ctrl + P` | Print Bill |
+| `Ctrl + N` | New Bill |
+| `Ctrl + H` | Open History |
+| `F5` | Calculate Total |
+
+## 💰 GST Calculation
+
+The system calculates GST **after applying the discount**.
+
+Example:
+
+```text
+Subtotal       = ₹10,000
+Discount 10%   = ₹1,000
+Taxable Amount = ₹9,000
+GST 18%        = ₹1,620
+Grand Total    = ₹10,620
+```
+
+## 💳 Payment Status
+
+The application automatically determines the payment status.
+
+```text
+Paid Amount >= Grand Total
+        ↓
+      PAID
+```
+
+```text
+Paid Amount > 0
+        ↓
+     PARTIAL
+```
+
+```text
+Paid Amount = 0
+        ↓
+     UNPAID
+```
+
+The system also displays either the **change** or **balance due**.
+
+## 🗃️ Database
+
+The application uses **SQLite** to store bill information.
+
+Database file:
+
+```text
+garage_billing.db
+```
+
+The database stores:
+
+- Bill number
+- Date and time
+- Customer details
+- Vehicle details
+- Services
+- Parts
+- Subtotal
+- Labour
+- Discount
+- GST
+- Total
+- Payment method
+- Amount paid
+- Payment status
+- Bill text
+
+## 🧾 Bill Storage
+
+Saved bills are automatically stored inside:
+
+```text
+garage_bills/
+```
+
+Example:
+
+```text
+Garage_Bill_10001.txt
+Garage_Bill_10002.txt
+Garage_Bill_10003.txt
+```
+
+## ⚙️ Customization
+
+Services and parts can easily be modified in the Python file.
+
+### Services
+
+```python
+SERVICES = {
+    "General Service": 800,
+    "Oil Change": 500,
+    "Car Washing": 300,
+}
+```
+
+### Parts
+
+```python
+PARTS = {
+    "Engine Oil": 650,
+    "Oil Filter": 250,
+    "Brake Pad": 1800,
+}
+```
+
+### GST
+
+GST can be changed using:
+
+```python
+GST_RATE = 18
+```
+
+### Garage Name
+
+```python
+GARAGE_NAME = "CAR GARAGE"
+GARAGE_TAGLINE = "SERVICE CENTER"
+```
+
+## 🔐 Input Validation
+
+The system includes validation for:
+
+- Phone numbers
+- Quantity fields
+- Money fields
+- Discount percentage
+- Negative values
+- Required customer name
+- Required vehicle number
+
+This helps prevent incorrect billing information.
+
+## 🖨️ Printing
+
+The application creates a temporary text file and sends it to the system's default printer.
+
+On Windows, it uses the default Windows printing mechanism.
+
+On Linux, it uses the `lp` command.
+
+## 🔮 Future Enhancements
 
 Possible improvements include:
 
-* 🗄️ MySQL database integration
-* 👤 User login & authentication
-* 📊 Admin dashboard
-* 📦 Inventory management
-* 👨‍🔧 Mechanic management
-* 📅 Service appointment booking
-* 📱 Customer service history
-* 📄 PDF invoice generation
-* 🧾 Professional GST invoice
-* 📧 Invoice sharing through email
-* 📱 WhatsApp invoice sharing
-* 📷 Barcode/QR code support
-* ☁️ Cloud database integration
-* 📈 Sales and revenue reports
-* 🔐 Role-based access control
+- 📄 PDF invoice generation
+- 🧾 Professional invoice templates
+- 📧 Email bill to customers
+- 📱 WhatsApp bill sharing
+- 📊 Monthly sales reports
+- 📈 Sales dashboard
+- 👨‍🔧 Employee management
+- 📦 Spare-parts inventory management
+- 🔐 Admin login system
+- ☁️ Cloud database backup
+- 📱 Mobile application
+- 💳 Online payment integration
 
----
+## 👨‍💻 Author
 
-## 🤝 Contributing
+**Siddharth Gajbhare**
 
-Contributions are welcome!
+### Project
 
-### 1. Fork the repository
+**Car Garage Billing System**
 
-### 2. Create a feature branch
+Built using **Python, Tkinter, and SQLite**.
 
-```bash
-git checkout -b feature-name
-```
+## 📜 License
 
-### 3. Make your changes
-
-### 4. Commit your changes
-
-```bash
-git add .
-git commit -m "Added new feature"
-```
-
-### 5. Push your branch
-
-```bash
-git push origin feature-name
-```
-
-### 6. Create a Pull Request
-
----
-
-## 📄 License
-
-This project is developed for **educational and learning purposes**.
-
----
-
-## 👨‍💻 Owner & Developer
-
-### **Siddharth Gajbhare**
-
-💻 Python Developer
-🛠️ Project Owner & Developer
-
-**GitHub:**
-https://github.com/siddharthgajbhare
-
----
-
-## ⭐ Support
-
-If you found this project useful, please consider giving the repository a ⭐ **Star**.
-
-Thank you for visiting! 🚗🔧
-
-**Car Garage Billing System — Making Garage Billing Simple & Efficient.**
+This project is created for **educational and project purposes**. You are free to modify and improve it according to your requirements.
